@@ -101,3 +101,8 @@ export function visibleTarget(text: string, typedLength: number, mode: GameMode)
   }
   return text;
 }
+
+
+export function canAcceptGameInput(isPaused: boolean, easyPausedForLine: number): boolean {
+  return !isPaused || easyPausedForLine >= 0;
+}
