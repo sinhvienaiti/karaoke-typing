@@ -11,6 +11,12 @@ describe("parseLrc", () => {
     expect(lines[2]?.text).toBe("World");
   });
 
+  it("applies LRC offset metadata regardless of row position", () => {
+    const lines = parseLrc("[00:01.00]A\n[offset:500]\n[00:02.00]B");
+    expect(lines[0]?.start).toBe(1.5);
+    expect(lines[1]?.start).toBe(2.5);
+  });
+
   it("parses enhanced word timestamps", () => {
     const [line] = parseLrc("[00:05.00]<00:05.00>Hello <00:05.50>world");
     expect(line?.text).toBe("Hello world");
