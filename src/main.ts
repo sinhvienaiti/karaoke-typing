@@ -51,7 +51,7 @@ app.innerHTML = `
               <option value="blank">Blank — lyrics are hidden</option>
             </select>
           </label>
-          <label>Lyrics offset <span id="offset-value">0.00s</span>
+          <label>Lyrics offset (+ delays) <span id="offset-value">0.00s</span>
             <input id="offset-input" type="range" min="-5" max="5" step="0.05" value="0" />
           </label>
           <label>Playback rate <span id="rate-value">1.00×</span>
@@ -316,7 +316,7 @@ function tick(): void {
       controller.pause();
       pauseButton.disabled = true;
       pauseButton.textContent = "Finish line";
-      controller.seek(lyrics[previousActiveLine]?.end ?? time);
+      controller.seek((lyrics[previousActiveLine]?.end ?? time) + offset);
       easyPausedForLine = previousActiveLine;
       activeLine = previousActiveLine;
     } else {
@@ -330,7 +330,7 @@ function tick(): void {
   renderTimeline(time, duration);
   renderStats();
 
-  const lastEnd = (lyrics[lyrics.length - 1]?.end ?? 0) - offset;
+  const lastEnd = (lyrics[lyrics.length - 1]?.end ?? 0) + offset;
   const mediaEnded = duration > 0 && time >= duration - 0.15;
   if (!controller.isPaused() && (mediaEnded || time >= lastEnd + 0.15)) {
     finishGame();
@@ -361,7 +361,7 @@ function handleTyping(key: string): void {
     pauseButton.disabled = false;
     pauseButton.textContent = "Pause";
     if (next !== undefined && controller !== null) {
-      controller.seek(Math.max(0, next.start - Number(offsetInput.value)));
+      controller.seek(Math.max(0, next.start + Number(offsetInput.value)));
       void controller.play();
     } else {
       finishGame();
@@ -381,7 +381,7 @@ function skipActiveLine(): void {
 
   const next = lyrics[lineIndex + 1];
   if (next !== undefined && controller !== null) {
-    controller.seek(Math.max(0, next.start - Number(offsetInput.value)));
+    controller.seek(Math.max(0, next.start + Number(offsetInput.value)));
     void controller.play();
   } else {
     finishGame();
