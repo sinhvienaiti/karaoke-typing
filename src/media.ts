@@ -70,7 +70,7 @@ export function extractYouTubeId(value: string): string | null {
       return id !== undefined && /^[\w-]{11}$/.test(id) ? id : null;
     }
 
-    if (url.hostname.endsWith("youtube.com")) {
+    if (url.hostname === "youtube.com" || url.hostname.endsWith(".youtube.com")) {
       const direct = url.searchParams.get("v");
       if (direct !== null && /^[\w-]{11}$/.test(direct)) return direct;
       const parts = url.pathname.split("/").filter(Boolean);
