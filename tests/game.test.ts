@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GameEngine, visibleTarget } from "../src/game";
+import { canAcceptGameInput, GameEngine, visibleTarget } from "../src/game";
 import type { LyricLine } from "../src/types";
 
 const lines: LyricLine[] = [
@@ -43,5 +43,14 @@ describe("visibleTarget", () => {
     expect(visibleTarget("hello", 2, "blind")).toBe("••l••");
     expect(visibleTarget("hello", 2, "blank")).toBe("•••••");
     expect(visibleTarget("hello", 2, "normal")).toBe("hello");
+  });
+});
+
+
+describe("canAcceptGameInput", () => {
+  it("blocks manual pause but keeps Easy mode recovery playable", () => {
+    expect(canAcceptGameInput(false, -1)).toBe(true);
+    expect(canAcceptGameInput(true, -1)).toBe(false);
+    expect(canAcceptGameInput(true, 0)).toBe(true);
   });
 });
