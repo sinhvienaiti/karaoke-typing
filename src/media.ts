@@ -41,18 +41,31 @@ function loadYouTubeApi(): Promise<void> {
 
   youtubeApiPromise = new Promise((resolve, reject) => {
     const previous = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
+    const onReady = (): void => {
       previous?.();
       resolve();
     };
+    const onError = (script: HTMLScriptElement): void => {
+      script.remove();
+      youtubeApiPromise = null;
+      if (window.onYouTubeIframeAPIReady === onReady) {
+        window.onYouTubeIframeAPIReady = previous;
+      }
+      reject(new Error("Could not load YouTube Player API"));
+    };
+
+    window.onYouTubeIframeAPIReady = onReady;
 
     const existing = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
-    if (existing !== null) return;
+    if (existing !== null) {
+      existing.addEventListener("error", () => onError(existing), { once: true });
+      return;
+    }
 
     const script = document.createElement("script");
     script.src = "https://www.youtube.com/iframe_api";
     script.async = true;
-    script.addEventListener("error", () => reject(new Error("Could not load YouTube Player API")), { once: true });
+    script.addEventListener("error", () => onError(script), { once: true });
     document.head.append(script);
   });
 
