@@ -1,5 +1,5 @@
 import "./styles.css";
-import { GameEngine, visibleTarget } from "./game";
+import { canAcceptGameInput, GameEngine, visibleTarget } from "./game";
 import { findActiveLine, parseLrc, sungCharacterCount } from "./lrc";
 import { extractYouTubeId, LocalMediaController, YouTubeMediaController } from "./media";
 import type { GameMode, LyricLine, MediaController, SongMeta } from "./types";
@@ -342,7 +342,7 @@ function tick(): void {
 
 function handleTyping(key: string): void {
   if (engine === null || controller === null) return;
-  if (controller.isPaused() && easyPausedForLine < 0) return;
+  if (!canAcceptGameInput(controller.isPaused(), easyPausedForLine)) return;
   const lineIndex = easyPausedForLine >= 0 ? easyPausedForLine : activeLine;
   if (lineIndex < 0) return;
 
@@ -372,7 +372,7 @@ function handleTyping(key: string): void {
 
 function skipActiveLine(): void {
   if (engine === null || controller === null) return;
-  if (controller.isPaused() && easyPausedForLine < 0) return;
+  if (!canAcceptGameInput(controller.isPaused(), easyPausedForLine)) return;
   const lineIndex = easyPausedForLine >= 0 ? easyPausedForLine : activeLine;
   if (lineIndex < 0) return;
   engine.finalizeLine(lineIndex);
