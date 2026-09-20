@@ -88,7 +88,7 @@ export function parseLrc(input: string, fallbackTailSeconds = 6): LyricLine[] {
 }
 
 export function findActiveLine(lines: LyricLine[], time: number, offsetSeconds = 0): number {
-  const adjusted = time + offsetSeconds;
+  const adjusted = time - offsetSeconds;
   let low = 0;
   let high = lines.length - 1;
   let match = -1;
@@ -113,7 +113,7 @@ export function findActiveLine(lines: LyricLine[], time: number, offsetSeconds =
 
 export function activeTokenIndex(line: LyricLine, time: number, offsetSeconds = 0): number {
   if (line.tokens.length === 0) return -1;
-  const adjusted = time + offsetSeconds;
+  const adjusted = time - offsetSeconds;
   let index = -1;
   for (let i = 0; i < line.tokens.length; i += 1) {
     const token = line.tokens[i];
@@ -124,7 +124,7 @@ export function activeTokenIndex(line: LyricLine, time: number, offsetSeconds = 
 }
 
 export function sungCharacterCount(line: LyricLine, time: number, offsetSeconds = 0): number {
-  const adjusted = time + offsetSeconds;
+  const adjusted = time - offsetSeconds;
   if (adjusted <= line.start) return 0;
   if (adjusted >= line.end) return line.text.length;
 
