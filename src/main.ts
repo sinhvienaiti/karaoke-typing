@@ -173,6 +173,9 @@ let gameStartedAt = 0;
 let meta: SongMeta = { title: "Untitled", artist: "" };
 let easyPausedForLine = -1;
 let ended = false;
+let lastRenderedLine = -2;
+let lastRenderedTypedLength = -1;
+let lastRenderedSungChars = -1;
 
 for (const button of document.querySelectorAll<HTMLButtonElement>(".source-button")) {
   button.addEventListener("click", () => {
@@ -279,6 +282,9 @@ async function restartGame(): Promise<void> {
   activeLine = -1;
   previousActiveLine = -1;
   easyPausedForLine = -1;
+  lastRenderedLine = -2;
+  lastRenderedTypedLength = -1;
+  lastRenderedSungChars = -1;
   engine = new GameEngine(lyrics, gameMode.value as GameMode);
   controller.pause();
   controller.seek(0);
@@ -301,9 +307,9 @@ function tick(): void {
   const time = controller.currentTime();
   const duration = controller.duration();
   const offset = Number(offsetInput.value);
-  activeLine = findActiveLine(lyrics, time, offset);
+  activeLine = easyPausedForLine >= 0 ? easyPausedForLine : findActiveLine(lyrics, time, offset);
 
-  if (previousActiveLine >= 0 && activeLine !== previousActiveLine) {
+  if (easyPausedForLine < 0 && previousActiveLine >= 0 && activeLine !== previousActiveLine) {
     const previousState = engine.states[previousActiveLine];
     if (engine.mode === "easy" && previousState !== undefined && !previousState.completed) {
       controller.pause();
@@ -347,6 +353,7 @@ function handleTyping(key: string): void {
     engine.finalizeLine(lineIndex);
     easyPausedForLine = -1;
     previousActiveLine = lineIndex;
+    lastRenderedLine = -2;
     const next = lyrics[lineIndex + 1];
     if (next !== undefined && controller !== null) {
       controller.seek(Math.max(0, next.start - Number(offsetInput.value)));
@@ -362,6 +369,7 @@ function skipActiveLine(): void {
   if (lineIndex < 0) return;
   engine.finalizeLine(lineIndex);
   easyPausedForLine = -1;
+  lastRenderedLine = -2;
 
   const next = lyrics[lineIndex + 1];
   if (next !== undefined && controller !== null) {
@@ -379,6 +387,9 @@ function renderLyrics(lineIndex: number): void {
     nextLine.textContent = lyrics[0]?.text ?? "";
     lineProgressFill.style.width = "0%";
     typingInput.value = "";
+    lastRenderedLine = -1;
+    lastRenderedTypedLength = 0;
+    lastRenderedSungChars = 0;
     return;
   }
 
@@ -391,9 +402,22 @@ function renderLyrics(lineIndex: number): void {
 
   const display = visibleTarget(line.text, state.typed.length, engine.mode);
   const sungChars =
-    engine.mode === "normal"
+    engine.mode === "normal" || engine.mode === "easy"
       ? sungCharacterCount(line, controller?.currentTime() ?? 0, Number(offsetInput.value))
       : 0;
+
+  if (
+    lastRenderedLine === lineIndex &&
+    lastRenderedTypedLength === state.typed.length &&
+    lastRenderedSungChars === sungChars
+  ) {
+    typingInput.value = state.typed;
+    return;
+  }
+
+  lastRenderedLine = lineIndex;
+  lastRenderedTypedLength = state.typed.length;
+  lastRenderedSungChars = sungChars;
   currentLine.replaceChildren();
 
   for (let index = 0; index < display.length; index += 1) {
