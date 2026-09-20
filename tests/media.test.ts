@@ -10,6 +10,6 @@ describe("extractYouTubeId", () => {
   });
 
   it("rejects invalid values", () => {
-    expect(extractYouTubeId("not-a-video")).toBeNull();
+    expect(extractYouTubeId("not-video")).toBeNull();
   });
 });
