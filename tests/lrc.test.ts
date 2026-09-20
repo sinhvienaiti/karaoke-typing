@@ -21,7 +21,7 @@ describe("parseLrc", () => {
 
   it("finds the active lyric line with runtime offset", () => {
     const lines = parseLrc("[00:01.00]A\n[00:02.00]B");
-    expect(findActiveLine(lines, 0.8, 0.2)).toBe(0);
-    expect(findActiveLine(lines, 1.9, 0.2)).toBe(1);
+    expect(findActiveLine(lines, 1.2, 0.2)).toBe(0);
+    expect(findActiveLine(lines, 2.2, 0.2)).toBe(1);
   });
 });
