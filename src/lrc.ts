@@ -39,14 +39,18 @@ export function parseLrc(input: string, fallbackTailSeconds = 6): LyricLine[] {
   let offsetSeconds = 0;
 
   for (const row of rows) {
+    const offsetMatch = OFFSET.exec(row.trim());
+    if (offsetMatch !== null) {
+      offsetSeconds = Number(offsetMatch[1]) / 1000;
+      break;
+    }
+  }
+
+  for (const row of rows) {
     const trimmed = row.trim();
     if (trimmed.length === 0) continue;
 
-    const offsetMatch = OFFSET.exec(trimmed);
-    if (offsetMatch !== null) {
-      offsetSeconds = Number(offsetMatch[1]) / 1000;
-      continue;
-    }
+    if (OFFSET.test(trimmed)) continue;
 
     const matches = [...trimmed.matchAll(LINE_TIME)];
     if (matches.length === 0) continue;
