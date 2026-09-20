@@ -55,7 +55,7 @@ app.innerHTML = `
             <input id="offset-input" type="range" min="-5" max="5" step="0.05" value="0" />
           </label>
           <label>Playback rate <span id="rate-value">1.00×</span>
-            <input id="rate-input" type="range" min="0.5" max="1.5" step="0.05" value="1" />
+            <input id="rate-input" type="range" min="0.5" max="1.5" step="0.25" value="1" />
           </label>
           <button id="start-button" class="primary" type="button">Load song</button>
           <p id="setup-error" class="error" role="alert"></p>
@@ -287,6 +287,7 @@ async function restartGame(): Promise<void> {
   lastRenderedSungChars = -1;
   engine = new GameEngine(lyrics, gameMode.value as GameMode);
   controller.pause();
+  pauseButton.disabled = false;
   controller.seek(0);
   controller.setRate(Number(rateInput.value));
   typingInput.value = "";
@@ -313,6 +314,8 @@ function tick(): void {
     const previousState = engine.states[previousActiveLine];
     if (engine.mode === "easy" && previousState !== undefined && !previousState.completed) {
       controller.pause();
+      pauseButton.disabled = true;
+      pauseButton.textContent = "Finish line";
       controller.seek(lyrics[previousActiveLine]?.end ?? time);
       easyPausedForLine = previousActiveLine;
       activeLine = previousActiveLine;
@@ -357,6 +360,7 @@ function handleTyping(key: string): void {
     const next = lyrics[lineIndex + 1];
     if (next !== undefined && controller !== null) {
       controller.seek(Math.max(0, next.start - Number(offsetInput.value)));
+      pauseButton.disabled = false;
       void controller.play();
       pauseButton.textContent = "Pause";
     }
@@ -370,6 +374,8 @@ function skipActiveLine(): void {
   engine.finalizeLine(lineIndex);
   easyPausedForLine = -1;
   lastRenderedLine = -2;
+  pauseButton.disabled = false;
+  pauseButton.textContent = "Pause";
 
   const next = lyrics[lineIndex + 1];
   if (next !== undefined && controller !== null) {
@@ -451,6 +457,10 @@ function renderTimeline(time: number, duration: number): void {
 
 async function togglePause(): Promise<void> {
   if (controller === null) return;
+  if (easyPausedForLine >= 0) {
+    typingInput.focus();
+    return;
+  }
   if (controller.isPaused()) {
     await controller.play();
     pauseButton.textContent = "Pause";
