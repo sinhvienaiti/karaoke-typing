@@ -341,7 +341,8 @@ function tick(): void {
 }
 
 function handleTyping(key: string): void {
-  if (engine === null) return;
+  if (engine === null || controller === null) return;
+  if (controller.isPaused() && easyPausedForLine < 0) return;
   const lineIndex = easyPausedForLine >= 0 ? easyPausedForLine : activeLine;
   if (lineIndex < 0) return;
 
@@ -370,7 +371,8 @@ function handleTyping(key: string): void {
 }
 
 function skipActiveLine(): void {
-  if (engine === null) return;
+  if (engine === null || controller === null) return;
+  if (controller.isPaused() && easyPausedForLine < 0) return;
   const lineIndex = easyPausedForLine >= 0 ? easyPausedForLine : activeLine;
   if (lineIndex < 0) return;
   engine.finalizeLine(lineIndex);
