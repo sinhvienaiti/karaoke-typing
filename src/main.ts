@@ -358,11 +358,13 @@ function handleTyping(key: string): void {
     previousActiveLine = lineIndex;
     lastRenderedLine = -2;
     const next = lyrics[lineIndex + 1];
+    pauseButton.disabled = false;
+    pauseButton.textContent = "Pause";
     if (next !== undefined && controller !== null) {
       controller.seek(Math.max(0, next.start - Number(offsetInput.value)));
-      pauseButton.disabled = false;
       void controller.play();
-      pauseButton.textContent = "Pause";
+    } else {
+      finishGame();
     }
   }
 }
