@@ -2,6 +2,20 @@ import "./styles.css";
 import { canAcceptGameInput, GameEngine, visibleTarget } from "./game";
 import { findActiveLine, parseLrc, sungCharacterCount } from "./lrc";
 import { extractYouTubeId, LocalMediaController, YouTubeMediaController } from "./media";
+import {
+  LEARNING_ATTEMPT_MESSAGE,
+  PARENT_ORIGIN,
+  REVIEW_DATASET_MESSAGE,
+  REVIEW_ERROR_MESSAGE,
+  REVIEW_READY_MESSAGE,
+  buildKaraokeLineEvent,
+  buildKaraokeReviewLines,
+  buildKaraokeWordEvent,
+  lyricWords,
+  parseKaraokeReviewDataset,
+  wordAtIndex,
+  type KaraokeReviewDataset,
+} from "./learning/shared";
 import type { GameMode, LyricLine, MediaController, SongMeta } from "./types";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -176,6 +190,13 @@ let ended = false;
 let lastRenderedLine = -2;
 let lastRenderedTypedLength = -1;
 let lastRenderedSungChars = -1;
+let reviewDataset: KaraokeReviewDataset | null = null;
+let learningRequestSequence = 0;
+const lineStartedAt = new Map<number, number>();
+const reportedLines = new Set<number>();
+const reportedWords = new Map<number, Set<string>>();
+const wrongWords = new Map<number, Set<string>>();
+const replayedReviewLines = new Set<number>();
 
 for (const button of document.querySelectorAll<HTMLButtonElement>(".source-button")) {
   button.addEventListener("click", () => {
