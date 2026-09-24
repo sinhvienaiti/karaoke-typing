@@ -434,6 +434,8 @@ typingInput.addEventListener("keydown", (event) => {
 });
 
 async function loadSong(): Promise<void> {
+  reviewDataset = null;
+  resetLearningTracking();
   setupError.textContent = "";
   const parsed = parseLrc(lrcInput.value);
   if (parsed.length === 0) {
@@ -481,9 +483,77 @@ function showGame(): void {
   byId("playing-artist").textContent = meta.artist;
 }
 
+function reviewGameMode(): GameMode {
+  if (reviewDataset?.goal === "listening") return "blank";
+  if (reviewDataset?.goal === "sentence-building") return "blind";
+  if (reviewDataset?.goal === "mixed") return "blind";
+  return "normal";
+}
+
+function startReviewGame(): void {
+  if (reviewDataset === null || lyrics.length === 0) return;
+
+  cancelAnimationFrame(frameId);
+  ended = false;
+  activeLine = 0;
+  previousActiveLine = 0;
+  easyPausedForLine = -1;
+  lastRenderedLine = -2;
+  lastRenderedTypedLength = -1;
+  lastRenderedSungChars = -1;
+  resetLearningTracking();
+  engine = new GameEngine(lyrics, reviewGameMode());
+  typingInput.value = "";
+  gameStartedAt = performance.now();
+  resultPanel.classList.add("hidden");
+  gamePanel.classList.remove("hidden");
+  pauseButton.disabled = false;
+  pauseButton.textContent = "Replay prompt";
+  mediaHost.textContent =
+    "Smart Review · " +
+    reviewDataset.goal.replaceAll("-", " ") +
+    " · no media file required";
+  renderStats();
+  ensureLineStarted(activeLine);
+  renderLyrics(activeLine);
+  renderTimeline(0, lyrics.length);
+  typingInput.focus();
+  if (reviewDataset.goal === "listening") speakReviewPrompt(false);
+}
+
+function advanceReviewLine(): void {
+  if (reviewDataset === null || engine === null || activeLine < 0) return;
+  const current = activeLine;
+  engine.finalizeLine(current);
+  finalizeLearningLine(current);
+
+  const next = current + 1;
+  if (next >= lyrics.length) {
+    finishGame();
+    return;
+  }
+
+  activeLine = next;
+  previousActiveLine = next;
+  lastRenderedLine = -2;
+  lastRenderedTypedLength = -1;
+  lastRenderedSungChars = -1;
+  ensureLineStarted(next);
+  renderLyrics(next);
+  renderTimeline(next, lyrics.length);
+  renderStats();
+  typingInput.focus();
+  if (reviewDataset.goal === "listening") speakReviewPrompt(false);
+}
+
 async function restartGame(): Promise<void> {
+  if (reviewDataset !== null) {
+    startReviewGame();
+    return;
+  }
   if (controller === null || lyrics.length === 0) return;
   cancelAnimationFrame(frameId);
+  resetLearningTracking();
   ended = false;
   activeLine = -1;
   previousActiveLine = -1;
@@ -527,9 +597,11 @@ function tick(): void {
       activeLine = previousActiveLine;
     } else {
       engine.finalizeLine(previousActiveLine);
+      finalizeLearningLine(previousActiveLine);
     }
   }
 
+  ensureLineStarted(activeLine);
   renderLyrics(activeLine);
   previousActiveLine = activeLine;
 
@@ -547,20 +619,54 @@ function tick(): void {
 }
 
 function handleTyping(key: string): void {
-  if (engine === null || controller === null) return;
-  if (!canAcceptGameInput(controller.isPaused(), easyPausedForLine)) return;
-  const lineIndex = easyPausedForLine >= 0 ? easyPausedForLine : activeLine;
+  if (engine === null) return;
+  if (reviewDataset === null) {
+    if (controller === null) return;
+    if (!canAcceptGameInput(controller.isPaused(), easyPausedForLine)) return;
+  }
+
+  const lineIndex =
+    reviewDataset === null && easyPausedForLine >= 0
+      ? easyPausedForLine
+      : activeLine;
   if (lineIndex < 0) return;
 
-  const elapsed = Math.max(0.001, (performance.now() - gameStartedAt) / 1000);
+  const stateBefore = engine.states[lineIndex];
+  if (stateBefore === undefined) return;
+  ensureLineStarted(lineIndex);
+  const typedBefore = stateBefore.typed.length;
+  const mistakesBefore = stateBefore.mistakesInLine;
+  const elapsed = Math.max(
+    0.001,
+    (performance.now() - gameStartedAt) / 1000,
+  );
+
   engine.input(lineIndex, key, elapsed);
   const state = engine.states[lineIndex];
-  typingInput.value = state?.typed ?? "";
+  if (state === undefined) return;
+
+  if (state.mistakesInLine > mistakesBefore) {
+    markWrongWord(lineIndex, typedBefore);
+  }
+  if (state.typed.length > typedBefore) {
+    reportCompletedWords(lineIndex, state.typed.length);
+  }
+
+  typingInput.value = state.typed;
   renderLyrics(lineIndex);
   renderStats();
 
-  if (easyPausedForLine === lineIndex && state?.completed) {
+  if (state.completed) {
+    reportLineAttempt(lineIndex);
+    if (reviewDataset !== null) {
+      advanceReviewLine();
+      return;
+    }
+  }
+
+  if (easyPausedForLine === lineIndex && state.completed) {
     engine.finalizeLine(lineIndex);
+    finalizeLearningLine(lineIndex);
     easyPausedForLine = -1;
     previousActiveLine = lineIndex;
     lastRenderedLine = -2;
@@ -577,18 +683,26 @@ function handleTyping(key: string): void {
 }
 
 function skipActiveLine(): void {
-  if (engine === null || controller === null) return;
+  if (engine === null) return;
+
+  if (reviewDataset !== null) {
+    advanceReviewLine();
+    return;
+  }
+
+  if (controller === null) return;
   if (!canAcceptGameInput(controller.isPaused(), easyPausedForLine)) return;
   const lineIndex = easyPausedForLine >= 0 ? easyPausedForLine : activeLine;
   if (lineIndex < 0) return;
   engine.finalizeLine(lineIndex);
+  finalizeLearningLine(lineIndex);
   easyPausedForLine = -1;
   lastRenderedLine = -2;
   pauseButton.disabled = false;
   pauseButton.textContent = "Pause";
 
   const next = lyrics[lineIndex + 1];
-  if (next !== undefined && controller !== null) {
+  if (next !== undefined) {
     controller.seek(Math.max(0, next.start + Number(offsetInput.value)));
     void controller.play();
   } else {
@@ -666,6 +780,12 @@ function renderTimeline(time: number, duration: number): void {
 }
 
 async function togglePause(): Promise<void> {
+  if (reviewDataset !== null) {
+    speakReviewPrompt(true);
+    typingInput.focus();
+    return;
+  }
+
   if (controller === null) return;
   if (easyPausedForLine >= 0) {
     typingInput.focus();
@@ -687,7 +807,10 @@ function finishGame(): void {
   cancelAnimationFrame(frameId);
   controller?.pause();
 
-  for (let index = 0; index < lyrics.length; index += 1) engine.finalizeLine(index);
+  for (let index = 0; index < lyrics.length; index += 1) {
+    engine.finalizeLine(index);
+    finalizeLearningLine(index);
+  }
 
   byId("result-title").textContent = meta.title;
   byId("result-score").textContent = engine.stats.score.toLocaleString();
@@ -705,6 +828,9 @@ function finishGame(): void {
 function returnToSetup(): void {
   cancelAnimationFrame(frameId);
   controller?.pause();
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  reviewDataset = null;
+  resetLearningTracking();
   ended = true;
   gamePanel.classList.add("hidden");
   resultPanel.classList.add("hidden");
