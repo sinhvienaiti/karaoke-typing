@@ -843,6 +843,80 @@ function destroyController(): void {
   mediaHost.replaceChildren();
 }
 
+function applyKaraokeReviewDataset(data: unknown): void {
+  const raw =
+    data !== null && typeof data === "object"
+      ? (data as Record<string, unknown>)
+      : null;
+  const fallbackRequestId =
+    raw !== null && typeof raw["requestId"] === "string"
+      ? raw["requestId"].slice(0, 100)
+      : "invalid";
+
+  try {
+    const dataset = parseKaraokeReviewDataset(data);
+    if (dataset === null) return;
+
+    destroyController();
+    reviewDataset = dataset;
+    lyrics = buildKaraokeReviewLines(dataset);
+    meta = {
+      title: "Smart Review",
+      artist:
+        dataset.goal.replaceAll("-", " ") +
+        " · " +
+        String(dataset.items.length) +
+        " items",
+    };
+    showGame();
+    startReviewGame();
+
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: REVIEW_READY_MESSAGE,
+          requestId: dataset.requestId,
+          result: {
+            items: dataset.items.length,
+            goal: dataset.goal,
+          },
+        },
+        PARENT_ORIGIN,
+      );
+    }
+  } catch (error) {
+    reviewDataset = null;
+    resetLearningTracking();
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: REVIEW_ERROR_MESSAGE,
+          requestId: fallbackRequestId,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Karaoke Smart Review dataset failed",
+        },
+        PARENT_ORIGIN,
+      );
+    }
+  }
+}
+
+window.addEventListener("message", (event: MessageEvent<unknown>) => {
+  if (
+    event.source !== window.parent ||
+    event.origin !== PARENT_ORIGIN ||
+    event.data === null ||
+    typeof event.data !== "object"
+  ) {
+    return;
+  }
+  const data = event.data as Record<string, unknown>;
+  if (data["type"] !== REVIEW_DATASET_MESSAGE) return;
+  applyKaraokeReviewDataset(event.data);
+});
+
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const whole = Math.floor(seconds);
