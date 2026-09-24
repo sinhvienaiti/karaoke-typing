@@ -198,6 +198,191 @@ const reportedWords = new Map<number, Set<string>>();
 const wrongWords = new Map<number, Set<string>>();
 const replayedReviewLines = new Set<number>();
 
+function resetLearningTracking(): void {
+  lineStartedAt.clear();
+  reportedLines.clear();
+  reportedWords.clear();
+  wrongWords.clear();
+  replayedReviewLines.clear();
+  learningRequestSequence = 0;
+}
+
+function postLearningEvent(
+  event:
+    | ReturnType<typeof buildKaraokeWordEvent>
+    | ReturnType<typeof buildKaraokeLineEvent>,
+): void {
+  if (window.parent === window) return;
+  learningRequestSequence++;
+  window.parent.postMessage(
+    {
+      type: LEARNING_ATTEMPT_MESSAGE,
+      requestId:
+        "karaoke-typing-" +
+        Date.now().toString(36) +
+        "-" +
+        learningRequestSequence.toString(36),
+      event,
+    },
+    PARENT_ORIGIN,
+  );
+}
+
+function reviewItemForLine(index: number) {
+  return reviewDataset?.items[index] ?? null;
+}
+
+function ensureLineStarted(index: number): void {
+  if (index < 0 || lineStartedAt.has(index)) return;
+  lineStartedAt.set(index, performance.now());
+}
+
+function responseMsForLine(index: number): number | undefined {
+  const started = lineStartedAt.get(index);
+  return started === undefined ? undefined : Math.max(0, performance.now() - started);
+}
+
+function wordTokenId(word: { start: number; end: number }): string {
+  return String(word.start) + ":" + String(word.end);
+}
+
+function wordSet(
+  store: Map<number, Set<string>>,
+  lineIndex: number,
+): Set<string> {
+  let set = store.get(lineIndex);
+  if (set === undefined) {
+    set = new Set<string>();
+    store.set(lineIndex, set);
+  }
+  return set;
+}
+
+function markWrongWord(lineIndex: number, characterIndex: number): void {
+  const line = lyrics[lineIndex];
+  if (line === undefined) return;
+  const word = wordAtIndex(line.text, characterIndex);
+  if (word === null) return;
+  wordSet(wrongWords, lineIndex).add(wordTokenId(word));
+}
+
+function reportCompletedWords(
+  lineIndex: number,
+  typedLength: number,
+): void {
+  const line = lyrics[lineIndex];
+  if (line === undefined) return;
+  const reviewItem = reviewItemForLine(lineIndex);
+  if (reviewDataset !== null && reviewItem?.entityType !== "vocabulary") {
+    return;
+  }
+
+  const reported = wordSet(reportedWords, lineIndex);
+  const wrong = wordSet(wrongWords, lineIndex);
+  for (const word of lyricWords(line.text)) {
+    if (word.end > typedLength) continue;
+    const tokenId = wordTokenId(word);
+    if (reported.has(tokenId)) continue;
+    reported.add(tokenId);
+    postLearningEvent(
+      buildKaraokeWordEvent({
+        word,
+        result: wrong.has(tokenId) ? "wrong" : "correct",
+        ...(wrong.has(tokenId) ? { errorType: "spelling" } : {}),
+        replayUsed: replayedReviewLines.has(lineIndex),
+      }),
+    );
+  }
+}
+
+function reportIncompleteWords(lineIndex: number): void {
+  const line = lyrics[lineIndex];
+  const state = engine?.states[lineIndex];
+  if (line === undefined || state === undefined) return;
+  const reviewItem = reviewItemForLine(lineIndex);
+  if (reviewDataset !== null && reviewItem?.entityType !== "vocabulary") {
+    return;
+  }
+
+  const reported = wordSet(reportedWords, lineIndex);
+  const wrong = wordSet(wrongWords, lineIndex);
+  const words = lyricWords(line.text);
+
+  for (const word of words) {
+    const tokenId = wordTokenId(word);
+    if (!wrong.has(tokenId) || reported.has(tokenId)) continue;
+    reported.add(tokenId);
+    postLearningEvent(
+      buildKaraokeWordEvent({
+        word,
+        result: "wrong",
+        errorType: "spelling",
+        replayUsed: replayedReviewLines.has(lineIndex),
+      }),
+    );
+  }
+
+  const partial = words.find(
+    (word) => state.typed.length > word.start && state.typed.length < word.end,
+  );
+  if (partial === undefined) return;
+  const tokenId = wordTokenId(partial);
+  if (reported.has(tokenId)) return;
+  reported.add(tokenId);
+  postLearningEvent(
+    buildKaraokeWordEvent({
+      word: partial,
+      result: "wrong",
+      errorType: "missed-word",
+      replayUsed: replayedReviewLines.has(lineIndex),
+    }),
+  );
+}
+
+function reportLineAttempt(lineIndex: number): void {
+  if (reportedLines.has(lineIndex)) return;
+  const line = lyrics[lineIndex];
+  const state = engine?.states[lineIndex];
+  if (line === undefined || state === undefined) return;
+
+  const reviewItem = reviewItemForLine(lineIndex);
+  if (reviewDataset !== null && reviewItem?.entityType !== "sentence") {
+    return;
+  }
+
+  reportedLines.add(lineIndex);
+  postLearningEvent(
+    buildKaraokeLineEvent({
+      line,
+      typed: state.typed,
+      mistakes: state.mistakesInLine,
+      completed: state.completed,
+      responseMs: responseMsForLine(lineIndex),
+      listening: reviewDataset?.goal === "listening",
+      replayUsed: replayedReviewLines.has(lineIndex),
+    }),
+  );
+}
+
+function finalizeLearningLine(lineIndex: number): void {
+  const state = engine?.states[lineIndex];
+  if (state === undefined) return;
+  reportCompletedWords(lineIndex, state.typed.length);
+  if (!state.completed) reportIncompleteWords(lineIndex);
+  reportLineAttempt(lineIndex);
+}
+
+function speakReviewPrompt(markReplay: boolean): void {
+  if (reviewDataset === null || activeLine < 0) return;
+  const line = lyrics[activeLine];
+  if (line === undefined || !("speechSynthesis" in window)) return;
+  if (markReplay) replayedReviewLines.add(activeLine);
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(line.text);
+  utterance.lang = "en-US";
+  window.speechSynthesis.speak(utterance);
+}
+
 for (const button of document.querySelectorAll<HTMLButtonElement>(".source-button")) {
   button.addEventListener("click", () => {
     source = button.dataset["source"] === "local" ? "local" : "youtube";
