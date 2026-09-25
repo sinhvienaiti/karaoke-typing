@@ -183,6 +183,7 @@ let engine: GameEngine | null = null;
 let activeLine = -1;
 let previousActiveLine = -1;
 let frameId = 0;
+let loopGeneration = 0;
 let gameStartedAt = 0;
 let meta: SongMeta = { title: "Untitled", artist: "" };
 let easyPausedForLine = -1;
@@ -493,6 +494,7 @@ function reviewGameMode(): GameMode {
 function startReviewGame(): void {
   if (reviewDataset === null || lyrics.length === 0) return;
 
+  loopGeneration += 1;
   cancelAnimationFrame(frameId);
   ended = false;
   activeLine = 0;
@@ -552,6 +554,8 @@ async function restartGame(): Promise<void> {
     return;
   }
   if (controller === null || lyrics.length === 0) return;
+  const generation = ++loopGeneration;
+  const restartController = controller;
   cancelAnimationFrame(frameId);
   resetLearningTracking();
   ended = false;
@@ -572,14 +576,28 @@ async function restartGame(): Promise<void> {
   gamePanel.classList.remove("hidden");
   renderStats();
   renderLyrics(-1);
-  await controller.play();
+  await restartController.play();
+  if (
+    generation !== loopGeneration ||
+    controller !== restartController ||
+    ended
+  ) {
+    return;
+  }
   pauseButton.textContent = "Pause";
   typingInput.focus();
-  frameId = requestAnimationFrame(tick);
+  frameId = requestAnimationFrame(() => tick(generation));
 }
 
-function tick(): void {
-  if (controller === null || engine === null || ended) return;
+function tick(generation: number): void {
+  if (
+    generation !== loopGeneration ||
+    controller === null ||
+    engine === null ||
+    ended
+  ) {
+    return;
+  }
 
   const time = controller.currentTime();
   const duration = controller.duration();
@@ -615,7 +633,7 @@ function tick(): void {
     return;
   }
 
-  frameId = requestAnimationFrame(tick);
+  frameId = requestAnimationFrame(() => tick(generation));
 }
 
 function handleTyping(key: string): void {
@@ -804,6 +822,7 @@ async function togglePause(): Promise<void> {
 function finishGame(): void {
   if (engine === null || ended) return;
   ended = true;
+  loopGeneration += 1;
   cancelAnimationFrame(frameId);
   controller?.pause();
 
@@ -826,6 +845,7 @@ function finishGame(): void {
 }
 
 function returnToSetup(): void {
+  loopGeneration += 1;
   cancelAnimationFrame(frameId);
   controller?.pause();
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -838,6 +858,8 @@ function returnToSetup(): void {
 }
 
 function destroyController(): void {
+  loopGeneration += 1;
+  cancelAnimationFrame(frameId);
   controller?.destroy();
   controller = null;
   mediaHost.replaceChildren();
