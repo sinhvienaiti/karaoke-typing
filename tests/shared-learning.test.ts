@@ -92,8 +92,28 @@ describe("Karaoke shared learning contract", () => {
       "airport",
     ]);
     expect(buildKaraokeReviewLines(dataset!)).toEqual([
-      { start: 0, end: 7, text: "Hello world", tokens: [] },
-      { start: 8, end: 15, text: "Airport", tokens: [] },
+      {
+        start: 0,
+        end: 7,
+        text: "Hello world",
+        tokens: [],
+        learning: {
+          entityType: "sentence",
+          entityId: "Hello world",
+          activityType: "karaoke-line",
+        },
+      },
+      {
+        start: 8,
+        end: 15,
+        text: "Airport",
+        tokens: [],
+        learning: {
+          entityType: "vocabulary",
+          entityId: "airport",
+          activityType: "karaoke-line",
+        },
+      },
     ]);
   });
 
