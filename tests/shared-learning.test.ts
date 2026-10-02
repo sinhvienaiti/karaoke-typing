@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildKaraokeEnglishActivityLines,
   buildKaraokeLineEvent,
   buildKaraokeReviewLines,
   buildKaraokeWordEvent,
   lyricWords,
+  karaokeEnglishActivityAsReview,
+  parseKaraokeEnglishActivityDataset,
   parseKaraokeReviewDataset,
   wordAtIndex,
 } from "../src/learning/shared";
@@ -119,4 +122,61 @@ describe("Karaoke shared learning contract", () => {
       }),
     ).toThrow("vocabulary or sentence");
   });
+  it("keeps stable sentence ids for Smart Review and rich translation lines", () => {
+    const review = parseKaraokeReviewDataset({
+      version: 1,
+      type: "typing-game:learning:v1:review-dataset",
+      requestId: "karaoke-stable-id",
+      goal: "listening",
+      items: [{
+        entityType: "sentence",
+        entityId: "sent.42",
+        text: "Please check the schedule.",
+      }],
+    })!;
+    const reviewLine = buildKaraokeReviewLines(review)[0]!;
+    expect(
+      buildKaraokeLineEvent({
+        line: reviewLine,
+        typed: reviewLine.text,
+        mistakes: 0,
+        completed: true,
+        listening: true,
+      }),
+    ).toMatchObject({
+      entityType: "sentence",
+      entityId: "sent.42",
+      activityType: "listening",
+    });
+
+    const rich = parseKaraokeEnglishActivityDataset({
+      version: 1,
+      type: "typing-game:english-content:v1:activity-dataset",
+      requestId: "karaoke-rich-1",
+      gameId: "karaoke-typing",
+      activity: "translation",
+      items: [{
+        contentId: "trans.42",
+        entityType: "sentence",
+        entityId: "sent.42",
+        promptText: "Hãy kiểm tra lịch.",
+        answerText: "Please check the schedule.",
+      }],
+    })!;
+    expect(karaokeEnglishActivityAsReview(rich).goal).toBe("sentence-building");
+    const richLine = buildKaraokeEnglishActivityLines(rich)[0]!;
+    expect(
+      buildKaraokeLineEvent({
+        line: richLine,
+        typed: richLine.text,
+        mistakes: 0,
+        completed: true,
+      }),
+    ).toMatchObject({
+      entityType: "sentence",
+      entityId: "sent.42",
+      activityType: "translation",
+    });
+  });
+
 });
