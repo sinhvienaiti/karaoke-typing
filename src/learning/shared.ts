@@ -63,7 +63,7 @@ export type KaraokeLearningEvent = {
   entityType: "vocabulary" | "sentence";
   entityId: string;
   gameId: "karaoke-typing";
-  activityType: "typing" | "karaoke-line" | "listening";
+  activityType: string;
   result: "correct" | "wrong";
   occurredAt: string;
   responseMs?: number;
