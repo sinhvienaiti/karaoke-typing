@@ -4,6 +4,8 @@ export const LEARNING_ATTEMPT_MESSAGE = "typing-game:learning:v1:attempt";
 export const REVIEW_DATASET_MESSAGE = "typing-game:learning:v1:review-dataset";
 export const REVIEW_READY_MESSAGE = "typing-game:learning:v1:review-ready";
 export const REVIEW_ERROR_MESSAGE = "typing-game:learning:v1:review-error";
+export const ENGLISH_ACTIVITY_DATASET_MESSAGE =
+  "typing-game:english-content:v1:activity-dataset";
 export const PARENT_ORIGIN = "https://typing-game.local";
 
 export type KaraokeReviewGoal =
@@ -11,6 +13,29 @@ export type KaraokeReviewGoal =
   | "listening"
   | "sentence-building"
   | "mixed";
+
+export type KaraokeEnglishActivity =
+  | "example-typing"
+  | "dialogue"
+  | "listening-typing"
+  | "translation";
+
+export type KaraokeEnglishActivityDataset = {
+  version: 1;
+  type: typeof ENGLISH_ACTIVITY_DATASET_MESSAGE;
+  requestId: string;
+  gameId: "karaoke-typing";
+  activity: KaraokeEnglishActivity;
+  items: Array<{
+    contentId: string;
+    entityType: "sentence";
+    entityId: string;
+    promptText: string;
+    answerText: string;
+    meaningVi?: string;
+    audioText?: string;
+  }>;
+};
 
 export type KaraokeReviewItem = {
   entityType: "vocabulary" | "sentence";
@@ -38,7 +63,7 @@ export type KaraokeLearningEvent = {
   entityType: "vocabulary" | "sentence";
   entityId: string;
   gameId: "karaoke-typing";
-  activityType: "typing" | "karaoke-line" | "listening";
+  activityType: string;
   result: "correct" | "wrong";
   occurredAt: string;
   responseMs?: number;
@@ -55,6 +80,12 @@ const GOALS = new Set<KaraokeReviewGoal>([
   "listening",
   "sentence-building",
   "mixed",
+]);
+const ENGLISH_ACTIVITIES = new Set<KaraokeEnglishActivity>([
+  "example-typing",
+  "dialogue",
+  "listening-typing",
+  "translation",
 ]);
 
 function plainObject(value: unknown): value is Record<string, unknown> {
@@ -94,6 +125,112 @@ export function wordAtIndex(
       (word) => index >= word.start && index < word.end,
     ) ?? null
   );
+}
+
+export function parseKaraokeEnglishActivityDataset(
+  value: unknown,
+): KaraokeEnglishActivityDataset | null {
+  if (!plainObject(value) || value["type"] !== ENGLISH_ACTIVITY_DATASET_MESSAGE) {
+    return null;
+  }
+  if (value["version"] !== 1 || value["gameId"] !== "karaoke-typing") {
+    throw new TypeError("Karaoke English activity dataset identity is invalid");
+  }
+  const requestId = value["requestId"];
+  if (typeof requestId !== "string" || !REQUEST_ID_PATTERN.test(requestId)) {
+    throw new TypeError("Karaoke English activity requestId is invalid");
+  }
+  const activity = value["activity"];
+  if (
+    typeof activity !== "string" ||
+    !ENGLISH_ACTIVITIES.has(activity as KaraokeEnglishActivity)
+  ) {
+    throw new TypeError("Karaoke English activity is invalid");
+  }
+  const items = value["items"];
+  if (!Array.isArray(items) || items.length === 0 || items.length > 100) {
+    throw new TypeError("Karaoke English activity items must contain 1 to 100 items");
+  }
+  const parsed: KaraokeEnglishActivityDataset["items"] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (!plainObject(item)) throw new TypeError("Karaoke English activity item is invalid");
+    if (
+      typeof item["contentId"] !== "string" ||
+      item["entityType"] !== "sentence" ||
+      typeof item["entityId"] !== "string" ||
+      typeof item["promptText"] !== "string" ||
+      typeof item["answerText"] !== "string"
+    ) {
+      throw new TypeError("Karaoke English activity item fields are invalid");
+    }
+    const contentId = cleanText(item["contentId"]);
+    const entityId = cleanText(item["entityId"]);
+    const promptText = cleanText(item["promptText"]);
+    const answerText = cleanText(item["answerText"]);
+    if (seen.has(contentId)) {
+      throw new TypeError("Karaoke English activity contentId is duplicated");
+    }
+    seen.add(contentId);
+    parsed.push({
+      contentId,
+      entityType: "sentence",
+      entityId,
+      promptText,
+      answerText,
+      ...(typeof item["meaningVi"] === "string" && item["meaningVi"].trim() !== ""
+        ? { meaningVi: cleanText(item["meaningVi"]) }
+        : {}),
+      ...(typeof item["audioText"] === "string" && item["audioText"].trim() !== ""
+        ? { audioText: cleanText(item["audioText"]) }
+        : {}),
+    });
+  }
+  return {
+    version: 1,
+    type: ENGLISH_ACTIVITY_DATASET_MESSAGE,
+    requestId,
+    gameId: "karaoke-typing",
+    activity: activity as KaraokeEnglishActivity,
+    items: parsed,
+  };
+}
+
+export function karaokeEnglishActivityAsReview(
+  dataset: KaraokeEnglishActivityDataset,
+): KaraokeReviewDataset {
+  return {
+    version: 1,
+    type: REVIEW_DATASET_MESSAGE,
+    requestId: dataset.requestId,
+    goal:
+      dataset.activity === "listening-typing"
+        ? "listening"
+        : dataset.activity === "translation"
+          ? "sentence-building"
+          : "mixed",
+    items: dataset.items.map((item) => ({
+      entityType: "sentence",
+      entityId: item.entityId,
+      text: item.answerText,
+    })),
+  };
+}
+
+export function buildKaraokeEnglishActivityLines(
+  dataset: KaraokeEnglishActivityDataset,
+): LyricLine[] {
+  return dataset.items.map((item, index) => ({
+    start: index * 8,
+    end: index * 8 + 7,
+    text: item.answerText,
+    tokens: [],
+    learning: {
+      entityType: "sentence",
+      entityId: item.entityId,
+      activityType: dataset.activity,
+    },
+  }));
 }
 
 export function parseKaraokeReviewDataset(
@@ -173,6 +310,12 @@ export function buildKaraokeReviewLines(
     end: index * 8 + 7,
     text: item.text,
     tokens: [],
+    learning: {
+      entityType: item.entityType,
+      entityId: item.entityId,
+      activityType:
+        dataset.goal === "listening" ? "listening" : "karaoke-line",
+    },
   }));
 }
 
@@ -211,12 +354,15 @@ export function buildKaraokeLineEvent(options: {
   replayUsed?: boolean;
 }): KaraokeLearningEvent {
   const correct = options.completed && options.mistakes === 0;
+  const learning = options.line.learning;
   return {
     version: 1,
-    entityType: "sentence",
-    entityId: cleanText(options.line.text),
+    entityType: learning?.entityType ?? "sentence",
+    entityId: learning?.entityId ?? cleanText(options.line.text),
     gameId: "karaoke-typing",
-    activityType: options.listening ? "listening" : "karaoke-line",
+    activityType:
+      learning?.activityType ??
+      (options.listening ? "listening" : "karaoke-line"),
     result: correct ? "correct" : "wrong",
     occurredAt: options.occurredAt ?? new Date().toISOString(),
     ...(options.responseMs === undefined

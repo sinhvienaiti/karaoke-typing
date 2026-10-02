@@ -10,6 +10,11 @@ export type LyricLine = {
   end: number;
   text: string;
   tokens: LyricToken[];
+  learning?: {
+    entityType: "vocabulary" | "sentence";
+    entityId: string;
+    activityType: string;
+  };
 };
 
 export type GameStats = {

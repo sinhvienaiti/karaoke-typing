@@ -3,15 +3,19 @@ import { canAcceptGameInput, GameEngine, visibleTarget } from "./game";
 import { findActiveLine, parseLrc, sungCharacterCount } from "./lrc";
 import { extractYouTubeId, LocalMediaController, YouTubeMediaController } from "./media";
 import {
+  ENGLISH_ACTIVITY_DATASET_MESSAGE,
   LEARNING_ATTEMPT_MESSAGE,
   PARENT_ORIGIN,
   REVIEW_DATASET_MESSAGE,
   REVIEW_ERROR_MESSAGE,
   REVIEW_READY_MESSAGE,
+  buildKaraokeEnglishActivityLines,
   buildKaraokeLineEvent,
   buildKaraokeReviewLines,
   buildKaraokeWordEvent,
+  karaokeEnglishActivityAsReview,
   lyricWords,
+  parseKaraokeEnglishActivityDataset,
   parseKaraokeReviewDataset,
   wordAtIndex,
   type KaraokeReviewDataset,
@@ -925,6 +929,64 @@ function applyKaraokeReviewDataset(data: unknown): void {
   }
 }
 
+function applyKaraokeEnglishActivityDataset(data: unknown): void {
+  const raw =
+    data !== null && typeof data === "object"
+      ? (data as Record<string, unknown>)
+      : null;
+  const fallbackRequestId =
+    raw !== null && typeof raw["requestId"] === "string"
+      ? raw["requestId"].slice(0, 100)
+      : "invalid";
+  try {
+    const dataset = parseKaraokeEnglishActivityDataset(data);
+    if (dataset === null) return;
+    destroyController();
+    reviewDataset = karaokeEnglishActivityAsReview(dataset);
+    lyrics = buildKaraokeEnglishActivityLines(dataset);
+    meta = {
+      title: "English Practice",
+      artist:
+        dataset.activity.replaceAll("-", " ") +
+        " · " +
+        String(dataset.items.length) +
+        " items",
+    };
+    showGame();
+    startReviewGame();
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: REVIEW_READY_MESSAGE,
+          requestId: dataset.requestId,
+          result: {
+            items: dataset.items.length,
+            activity: dataset.activity,
+            richContent: true,
+          },
+        },
+        PARENT_ORIGIN,
+      );
+    }
+  } catch (error) {
+    reviewDataset = null;
+    resetLearningTracking();
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: REVIEW_ERROR_MESSAGE,
+          requestId: fallbackRequestId,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Karaoke English activity failed",
+        },
+        PARENT_ORIGIN,
+      );
+    }
+  }
+}
+
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (
     event.source !== window.parent ||
@@ -935,8 +997,13 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
     return;
   }
   const data = event.data as Record<string, unknown>;
-  if (data["type"] !== REVIEW_DATASET_MESSAGE) return;
-  applyKaraokeReviewDataset(event.data);
+  if (data["type"] === REVIEW_DATASET_MESSAGE) {
+    applyKaraokeReviewDataset(event.data);
+    return;
+  }
+  if (data["type"] === ENGLISH_ACTIVITY_DATASET_MESSAGE) {
+    applyKaraokeEnglishActivityDataset(event.data);
+  }
 });
 
 function formatTime(seconds: number): string {
